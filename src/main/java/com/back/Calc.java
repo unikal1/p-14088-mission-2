@@ -1,135 +1,160 @@
 package com.back;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
-import java.util.List;
+import java.util.*;
 
+/**
+ * 단순한 사칙연산(+,-,*) 및 괄호를 포함한 수식을 계산하는 유틸리티 클래스입니다.
+ * <p>
+ * 동작 방식:
+ * 1. 단항 마이너스(-(...))를 (0 - (...)) 형태로 변환
+ * 2. 수식을 공백 기준으로 토크나이징
+ * 3. 괄호 내부부터 재귀적으로 계산
+ * 4. 남은 식은 * → +, - 순서로 계산
+ */
 public class Calc {
-    public static void main(String[] args) {
 
+    public static void main(String[] args) {
+        run("3 + 4 * (4 + 2)");
     }
 
     /**
-     * 입력받은 문자열을 파싱하여, 후위 표기법으로 변환하고, stack 을 통해 계산합니다.
-     * @param expression 수식 문자열
-     * @return 반환값
+     * 문자열 기반 수식을 계산합니다.
+     * - 괄호와 단항 마이너스 처리
+     * - 재귀 계산 호출
+     * @param expression 입력 수식 문자열
+     * @return 계산 결과
      */
     public static int run(String expression) {
 
+        // 단항 마이너스 처리 (-(...) → (0 - (...))
         expression = unaryMinus(expression);
 
+        // 괄호 앞뒤 공백 추가 후 분할
         String[] values = expression
-                .replace("(",  "( ")
+                .replace("(", "( ")
                 .replace(")", " )")
-                .split(" ");
+                .replace("-(", "- (")
+                .split("\\s+");
 
-        System.out.println(expression);
+        // 배열을 리스트로 변환
+        List<String> listed = new ArrayList<>(Arrays.asList(values));
+        System.out.println(listed);
 
-        List<String> postFix = toPostFix(values);
-        Deque<Integer> stack = new ArrayDeque<>();
-        for(String each : postFix) {
-            if(isDigit(each)) stack.push(Integer.parseInt(each));
-            else {
-                int val1 = stack.pop();
-                int val2 = stack.pop();
-                int result = switch (each) {
-                    case "+" -> val1 + val2;
-                    case "-" -> val2 - val1;
-                    case "*" -> val1 * val2;
-                    default -> throw new IllegalArgumentException();
-                };
-
-                stack.push(result);
-            }
-        }
-        return stack.pop();
+        // 재귀 계산 시작
+        return calculate(listed);
     }
 
     /**
-     * 문자열에서 단항 마이너스에 대한 처리를 수행합니다.<br>
-     * 대표적으로 -(3-2) 는 다음과 같이 변환됩니다. -> (0 - (3 - 2)) <br>
-     * 이를 통하여 수식 처리의 일관성을 부여합니다.
-     * @param expression raw expression string
-     * @return expression string
+     * 괄호를 포함한 수식을 계산합니다.
+     * 괄호가 존재하면 내부부터 재귀적으로 계산하고, 모두 제거될 때까지 반복합니다.
+     * @param exps 토큰 리스트
+     * @return 괄호 제거 후 단순식 계산 결과
+     */
+    private static int calculate(List<String> exps) {
+
+        for (int i = 0; i < exps.size(); i++) {
+            if ("(".equals(exps.get(i))) {
+                int depth = 1;
+                for (int j = i + 1; j < exps.size(); j++) {
+                    if ("(".equals(exps.get(j))) depth++;
+                    else if (")".equals(exps.get(j))) depth--;
+                    if (depth == 0) {
+                        // 가장 안쪽 괄호 발견 시 내부 수식 재귀 계산
+                        int inner = calculate(new ArrayList<>(exps.subList(i + 1, j)));
+
+                        // 괄호 포함 구간을 결과값으로 치환
+                        replaceList(exps, String.valueOf(inner), i, j);
+
+                        // 리스트가 변경되었으므로 다시 전체 계산 수행
+                        return calculate(exps);
+                    }
+                }
+            }
+        }
+
+        // 괄호가 없는 단순식 계산
+        return simpleCalculate(exps);
+    }
+
+    /**
+     * 괄호가 없는 단순 수식(+,-,*)을 계산합니다.
+     * 1. 곱셈 우선 계산
+     * 2. 덧셈/뺄셈 순차 계산
+     * @param exps 수식 토큰 리스트
+     * @return 계산 결과
+     */
+    private static int simpleCalculate(List<String> exps) {
+        System.out.println("simple calc with " + exps);
+
+        // 1) 곱셈(*) 먼저 계산
+        for (int i = 0; i < exps.size(); i++) {
+            if ("*".equals(exps.get(i))) {
+                int val1 = Integer.parseInt(exps.get(i - 1));
+                int val2 = Integer.parseInt(exps.get(i + 1));
+
+                // [피연산자1, *, 피연산자2] → 결과값으로 치환
+                replaceList(exps, String.valueOf(val1 * val2), i - 1, i + 1);
+                i = 0; // 리스트가 변경되었으므로 다시 처음부터 탐색
+            }
+        }
+
+        // 2) 덧셈, 뺄셈 순차 계산 (왼쪽에서 오른쪽)
+        for (int i = 0; i < exps.size(); i++) {
+            if ("+".equals(exps.get(i))) {
+                int val1 = Integer.parseInt(exps.get(i - 1));
+                int val2 = Integer.parseInt(exps.get(i + 1));
+                replaceList(exps, String.valueOf(val1 + val2), i - 1, i + 1);
+                i = 0;
+            } else if ("-".equals(exps.get(i))) {
+                int val1 = Integer.parseInt(exps.get(i - 1));
+                int val2 = Integer.parseInt(exps.get(i + 1));
+                replaceList(exps, String.valueOf(val1 - val2), i - 1, i + 1);
+                i = 0;
+            }
+            System.out.println(exps);
+        }
+
+        // 최종 결과 반환
+        return Integer.parseInt(exps.get(0));
+    }
+
+    /**
+     * 리스트 내 특정 구간([startIdx, endIdx])을 제거하고
+     * 그 자리에 새 문자열 값을 삽입합니다.
+     */
+    private static void replaceList(List<String> exp, String value, int startIdx, int endIdx) {
+        exp.subList(startIdx, endIdx + 1).clear();
+        exp.add(startIdx, value);
+    }
+
+    /**
+     * 문자열에서 단항 마이너스(-(...))를 (0 - (...)) 형태로 변환합니다.
+     * 괄호 중첩까지 처리합니다.
      */
     private static String unaryMinus(String expression) {
         StringBuilder sb = new StringBuilder(expression);
         int depth = 0;
 
-        //문자열을 탐색하며 순회
-        for(int i = 0; i < sb.length(); i++) {
-            int startI = i; //-( 가 중첩되어 나타나는 경우, 재탐색이 필요하므로 초기 인덱스 번호를 저장
-            if(sb.charAt(i) == '-' && sb.charAt(i + 1) == '(') {
+        for (int i = 0; i < sb.length(); i++) {
+            int startI = i;
+            if (sb.charAt(i) == '-' && i + 1 < sb.length() && sb.charAt(i + 1) == '(') {
                 depth = 1;
-                sb.replace(i, i + 2, "(0 - ("); //-( 를 (0 - ( 로 변환
-
-                i = i + 6; //변환 후 i 인덱스
+                sb.replace(i, i + 2, "(0 - ("); // -( → (0 - (
+                i = i + 6;
                 startI = i;
-                while(i < sb.length()) {
-                    if(sb.charAt(i) == '(') depth++; //내부에서 여는 괄호를 만나면 깊이 1 증가
-                    if(sb.charAt(i) == ')') {  //내부에서 닫는 괄호를 만나면 깊이 1 감소
-                        depth--;
-                    }
-                    if(depth == 0) { //깊이가 0이면, 최초 인식한 ( 에 대한 짝이므로
+                while (i < sb.length()) {
+                    if (sb.charAt(i) == '(') depth++;
+                    if (sb.charAt(i) == ')') depth--;
+                    if (depth == 0) {
                         sb.replace(i, i + 1, "))");
                         break;
                     }
                     i++;
                 }
-
             }
-            i = startI; //중첩인 경우를 대비하여 인덱스 초기화
+            i = startI;
         }
         return sb.toString();
     }
 
-    /**
-     * 숫자 여부를 판별하여 boolean 으로 반환합니다.
-     * @param each 각 문자열 토큰
-     * @return 해당 문자열이 숫자인 경우 true, 그 외 false
-     */
-    private static boolean isDigit(String each) {
-        return each.matches("[+-]?\\d+");
-    }
-
-    /**
-     * 일반 중위 표기법의 수식을 후위 표기법의 수식으로 변환하여, 각 토큰을 리스트에 담아 반환합니다.
-     * @param values 중위 표기법 기반의 문자열 배열
-     * @return 후위 표기법 기반의 문자열 리스트
-     */
-    private static List<String> toPostFix(String[] values) {
-        List<String> output = new ArrayList<>();
-        Deque<String> operator = new ArrayDeque<>();
-
-        for(String each : values) {
-            if(each.isBlank()) continue;
-
-            if(isDigit(each)) output.add(each);
-            else if(each.equals("(")) operator.push(each);
-            else if(each.equals(")")) {
-                while(!operator.isEmpty() && !operator.peek().equals("(")) {
-                    output.add(operator.pop());
-                }
-                if(!operator.isEmpty()) operator.pop();
-            } else {
-                while(!operator.isEmpty() && !operator.peek().equals("(") &&
-                      !(isPriority(each) && !isPriority(operator.peek()))) {
-                    output.add(operator.pop());
-                }
-                operator.push(each);
-            }
-        }
-        while (!operator.isEmpty()) output.add(operator.pop());
-        return output;
-    }
-
-    /**
-     * 특정 토큰이 우선순위 연산자인지의 여부를 반환합니다.
-     * @param operator 연산자 문자열
-     * @return 우선순위 연산자(/, *) 인 경우 true, 그 외 false
-     */
-    private static boolean isPriority(String operator) {
-        return operator.equals("/") || operator.equals("*");
-    }
 }
